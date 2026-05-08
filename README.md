@@ -55,6 +55,32 @@ python -m src.main
 
 Create the `data` directory if it does not exist.
 
+## Changing the message language / Смена языка сообщений
+
+Bot messages (welcome texts, link/unlink confirmations, errors) can be switched between **English** and **Russian**.
+
+Set the `LOCALE` variable in your `.env` file:
+
+```env
+LOCALE=en   # English (default)
+LOCALE=ru   # Russian / Русский
+```
+
+Then restart the bridge: `docker compose restart`.
+
+---
+
+Сообщения бота (приветствия, подтверждения связки/отвязки, ошибки) можно переключить между **английским** и **русским** языком.
+
+Установите переменную `LOCALE` в файле `.env`:
+
+```env
+LOCALE=en   # Английский (по умолчанию)
+LOCALE=ru   # Русский
+```
+
+После этого перезапустите бридж: `docker compose restart`.
+
 ## Security
 
 - Do not commit `.env`; pass tokens via environment variables only.
