@@ -62,6 +62,9 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
             logger.debug("Invite m.room.member for another user: state_key=%s us=%s", event.state_key, me)
             return
         room_id = room.room_id
+        if not await bridge.room_server_allowed(room_id):
+            logger.warning("Rejecting invite from disallowed server: room_id=%s", room_id)
+            return
         logger.info("Accepting invite to room %s (mxid=%s)", room_id, me)
         resp = await client.join(room_id)
         if isinstance(resp, JoinError):
@@ -82,7 +85,7 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
         if not bridge.is_fresh_matrix_event(getattr(event, "server_timestamp", None)):
             return
         if bridge.parse_link_command(body) or bridge.is_unlink_command(body):
-            await bridge.try_link_from_matrix(room_id, body)
+            await bridge.try_link_from_matrix(room, event.sender, body)
         else:
             await bridge.relay_matrix_to_telegram(
                 room,

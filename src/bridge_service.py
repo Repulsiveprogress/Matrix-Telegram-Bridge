@@ -6,6 +6,7 @@ import time
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message
 from nio import AsyncClient, RoomGetStateEventResponse
 
@@ -24,6 +25,9 @@ from src.strings import Strings
 
 logger = logging.getLogger(__name__)
 
+# PRIVACY CONTRACT: message body/text must never appear in log output.
+# Do not pass `body`, `text`, or event content to any logger call at any level.
+
 
 def _matrix_sender_display_name(room, sender_id: str) -> str:
     user = room.users.get(sender_id)
@@ -33,16 +37,16 @@ def _matrix_sender_display_name(room, sender_id: str) -> str:
 
 
 def _format_relay_telegram_html(username: str, body: str) -> str:
-    u = html.escape(username.strip() or "?", quote=False)
-    b = html.escape(body, quote=False)
+    u = html.escape(username.strip() or "?", quote=True)
+    b = html.escape(body, quote=True)
     return f"<b>{u}</b>: {b}"
 
 
 def _format_relay_matrix_content(username: str, body: str) -> dict:
     u_plain = username.strip() or "?"
     plain = f"{u_plain}: {body}"
-    u = html.escape(u_plain, quote=False)
-    b = html.escape(body, quote=False)
+    u = html.escape(u_plain, quote=True)
+    b = html.escape(body, quote=True)
     formatted = f"<b>{u}</b>: {b}"
     return {
         "msgtype": "m.text",
@@ -70,10 +74,12 @@ class BridgeService:
         self._link_attempts = SlidingWindowLimiter(
             settings.rate_limit_link_attempts,
             float(settings.rate_limit_link_window_seconds),
+            global_max=settings.rate_limit_link_attempts * 10,
         )
         self._code_gen = SlidingWindowLimiter(
             settings.rate_limit_code_generations,
             float(settings.rate_limit_code_window_seconds),
+            global_max=settings.rate_limit_code_generations * 10,
         )
 
     def is_fresh_matrix_event(self, server_ts_ms: int | None) -> bool:
@@ -118,7 +124,8 @@ class BridgeService:
             return True
         h = (hostname or "").strip().lower()
         if not h:
-            return True
+            # Cannot determine hostname — deny when allowlist is configured.
+            return False
         return h == allowed or h.endswith(f".{allowed}")
 
     async def room_server_allowed(self, room_id: str) -> bool:
@@ -139,15 +146,32 @@ class BridgeService:
             return self._is_allowed_hostname(self._hostname_from_server_name(creator_server))
 
         logger.warning(
-            "Cannot determine room server for MATRIX_ALLOWED_SERVER check, allowing by default: room_id=%s creator=%s",
+            "Cannot determine room server for MATRIX_ALLOWED_SERVER check, denying: room_id=%s creator=%s",
             room_id,
             creator,
         )
-        return True
+        return False
 
     async def is_room_encrypted(self, room_id: str) -> bool:
         resp = await self.matrix.room_get_state_event(room_id, "m.room.encryption", "")
         return isinstance(resp, RoomGetStateEventResponse)
+
+    def _matrix_sender_is_moderator(self, room, sender_id: str) -> bool:
+        """Return True if sender has power level >= 50 (moderator or above)."""
+        try:
+            pl = room.power_levels
+            level = pl.get_user_level(sender_id)
+            return level >= 50
+        except Exception:
+            return False
+
+    async def _telegram_sender_is_admin(self, tg_chat_id: int, user_id: int) -> bool:
+        """Return True if the Telegram user is creator or administrator of the chat."""
+        try:
+            member = await self.tg_bot.get_chat_member(tg_chat_id, user_id)
+            return member.status in ("creator", "administrator")
+        except TelegramBadRequest:
+            return False
 
     async def send_matrix_plain(self, room_id: str, text: str) -> None:
         await self.matrix.room_send(
@@ -175,7 +199,7 @@ class BridgeService:
             return
         await self.maybe_send_matrix_welcome(room_id)
 
-    async def issue_link_for_telegram_chat(self, tg_chat_id: int, title: str | None) -> None:
+    async def issue_link_for_telegram_chat(self, tg_chat_id: int) -> None:
         if not self._code_gen.allow(tg_chat_id):
             await self.tg_bot.send_message(tg_chat_id, self.strings.rate_limit_code)
             return
@@ -186,18 +210,22 @@ class BridgeService:
         await self.db.revoke_pending_for_tg(tg_chat_id)
         code = generate_link_code()
         expires = time.time() + float(self.settings.link_code_ttl_seconds)
-        await self.db.insert_pending(code, tg_chat_id, expires, title)
+        await self.db.insert_pending(code, tg_chat_id, expires)
         await self.tg_bot.send_message(
             tg_chat_id,
             self.strings.telegram_welcome(self.settings.matrix_user_id, code),
         )
 
-    async def try_link_from_matrix(self, room_id: str, raw_body: str) -> None:
+    async def try_link_from_matrix(self, room, sender_id: str, raw_body: str) -> None:
+        room_id = room.room_id
         if self.is_unlink_command(raw_body):
-            await self.unlink_from_matrix(room_id)
+            await self.unlink_from_matrix(room, sender_id)
             return
         code = self.parse_link_command(raw_body)
         if not code:
+            return
+        if not self._matrix_sender_is_moderator(room, sender_id):
+            await self.send_matrix_plain(room_id, self.strings.not_authorized)
             return
         if not self._link_attempts.allow(room_id):
             await self.send_matrix_plain(room_id, self.strings.rate_limit_link)
@@ -223,19 +251,21 @@ class BridgeService:
             await self.db.delete_pending(code)
             await self.send_matrix_plain(room_id, self.strings.code_expired)
             return
-        existing_tg = await self.db.get_bridge_by_tg(pending.tg_chat_id)
-        if existing_tg:
+        linked = await self.db.try_link_atomic(code, pending.tg_chat_id, room_id)
+        if not linked:
             await self.send_matrix_plain(room_id, self.strings.tg_chat_already_linked)
             return
-        await self.db.insert_bridge(pending.tg_chat_id, room_id)
-        await self.db.delete_pending(code)
         await self.send_matrix_plain(room_id, self.strings.link_success_matrix)
         try:
             await self.tg_bot.send_message(pending.tg_chat_id, self.strings.link_success_telegram)
-        except Exception:
-            logger.exception("Failed to notify Telegram after link")
+        except Exception as exc:
+            logger.error("Failed to notify Telegram after link: %s", exc)
 
-    async def unlink_from_matrix(self, room_id: str) -> None:
+    async def unlink_from_matrix(self, room, sender_id: str) -> None:
+        room_id = room.room_id
+        if not self._matrix_sender_is_moderator(room, sender_id):
+            await self.send_matrix_plain(room_id, self.strings.not_authorized)
+            return
         bridge = await self.db.get_bridge_by_matrix(room_id)
         if not bridge:
             await self.send_matrix_plain(room_id, self.strings.unlink_no_bridge_matrix)
@@ -250,7 +280,10 @@ class BridgeService:
         except Exception:
             logger.exception("Failed to notify Telegram after unlink")
 
-    async def unlink_from_telegram(self, tg_chat_id: int) -> None:
+    async def unlink_from_telegram(self, tg_chat_id: int, from_user_id: int) -> None:
+        if not await self._telegram_sender_is_admin(tg_chat_id, from_user_id):
+            await self.tg_bot.send_message(tg_chat_id, self.strings.not_authorized)
+            return
         bridge = await self.db.get_bridge_by_tg(tg_chat_id)
         if not bridge:
             await self.tg_bot.send_message(tg_chat_id, self.strings.unlink_no_bridge_telegram)
@@ -289,12 +322,12 @@ class BridgeService:
             await self.tg_bot.send_message(
                 bridge.tg_chat_id, text, parse_mode=ParseMode.HTML
             )
-        except Exception:
-            logger.exception("relay_matrix_to_telegram failed")
+        except Exception as exc:
+            logger.error("relay_matrix_to_telegram failed: %s", exc)
 
-    async def relay_telegram_to_matrix(self, tg_chat_id: int, label: str, body: str) -> None:
+    async def relay_telegram_to_matrix(self, tg_chat_id: int, from_user_id: int, label: str, body: str) -> None:
         if self.is_unlink_command(body):
-            await self.unlink_from_telegram(tg_chat_id)
+            await self.unlink_from_telegram(tg_chat_id, from_user_id)
             return
         if body.strip().startswith("/"):
             return
@@ -306,16 +339,16 @@ class BridgeService:
         try:
             await self.send_matrix_room_message(bridge.matrix_room_id, content)
             logger.debug(
-                "Relayed TG->Matrix chat_id=%s room_id=%s text_len=%s",
+                "Relayed TG->Matrix chat_id=%s room_id=%s",
                 tg_chat_id,
                 bridge.matrix_room_id,
-                len(body),
             )
-        except Exception:
-            logger.exception(
-                "relay_telegram_to_matrix failed chat_id=%s room_id=%s",
+        except Exception as exc:
+            logger.error(
+                "relay_telegram_to_matrix failed chat_id=%s room_id=%s: %s",
                 tg_chat_id,
                 bridge.matrix_room_id,
+                exc,
             )
 
     async def relay_telegram_media(self, message: Message) -> None:

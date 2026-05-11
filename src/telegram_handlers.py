@@ -33,7 +33,7 @@ def build_telegram_router(bridge: BridgeService, bot: Bot) -> Router:
             return
         if old in ("member", "administrator"):
             return
-        await bridge.issue_link_for_telegram_chat(event.chat.id, event.chat.title)
+        await bridge.issue_link_for_telegram_chat(event.chat.id)
 
     @router.message(F.migrate_to_chat_id)
     async def on_migrate_to(message: Message) -> None:
@@ -65,13 +65,13 @@ def build_telegram_router(bridge: BridgeService, bot: Bot) -> Router:
             return
         text = message.text or ""
         if bridge.is_link_request_command(text):
-            await bridge.issue_link_for_telegram_chat(message.chat.id, message.chat.title)
+            await bridge.issue_link_for_telegram_chat(message.chat.id)
             return
         if bridge.is_unlink_command(text):
-            await bridge.unlink_from_telegram(message.chat.id)
+            await bridge.unlink_from_telegram(message.chat.id, message.from_user.id)
             return
         label = message.from_user.username or message.from_user.full_name or str(message.from_user.id)
-        await bridge.relay_telegram_to_matrix(message.chat.id, label, text)
+        await bridge.relay_telegram_to_matrix(message.chat.id, message.from_user.id, label, text)
 
     @router.message(F.chat.type.in_({"group", "supergroup"}), F.content_type.in_(_RELAY_MEDIA_TYPES))
     async def on_group_media(message: Message) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,6 @@ class PendingLink:
     tg_chat_id: int
     created_at: float
     expires_at: float
-    tg_chat_title: str | None
 
 
 @dataclass
@@ -44,6 +44,7 @@ class Database:
         async with aiosqlite.connect(path) as db:
             await db.execute("PRAGMA journal_mode=WAL;")
             await db.execute("PRAGMA foreign_keys=ON;")
+            await db.execute("PRAGMA secure_delete=ON;")
             await db.commit()
         await self.init_schema()
         return self
@@ -56,8 +57,7 @@ class Database:
                     code TEXT PRIMARY KEY,
                     tg_chat_id INTEGER NOT NULL,
                     created_at REAL NOT NULL,
-                    expires_at REAL NOT NULL,
-                    tg_chat_title TEXT
+                    expires_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_pending_links_tg
                     ON pending_links(tg_chat_id);
@@ -95,16 +95,12 @@ class Database:
         code: str,
         tg_chat_id: int,
         expires_at: float,
-        tg_chat_title: str | None,
     ) -> None:
         now = time.time()
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
-                """
-                INSERT INTO pending_links (code, tg_chat_id, created_at, expires_at, tg_chat_title)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (code, tg_chat_id, now, expires_at, tg_chat_title),
+                "INSERT INTO pending_links (code, tg_chat_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                (code, tg_chat_id, now, expires_at),
             )
             await db.commit()
 
@@ -112,8 +108,7 @@ class Database:
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
-                "SELECT code, tg_chat_id, created_at, expires_at, tg_chat_title "
-                "FROM pending_links WHERE code = ?",
+                "SELECT code, tg_chat_id, created_at, expires_at FROM pending_links WHERE code = ?",
                 (code,),
             )
             row = await cur.fetchone()
@@ -124,7 +119,6 @@ class Database:
             tg_chat_id=int(row["tg_chat_id"]),
             created_at=float(row["created_at"]),
             expires_at=float(row["expires_at"]),
-            tg_chat_title=row["tg_chat_title"],
         )
 
     async def delete_pending(self, code: str) -> None:
@@ -132,14 +126,40 @@ class Database:
             await db.execute("DELETE FROM pending_links WHERE code = ?", (code,))
             await db.commit()
 
-    async def insert_bridge(self, tg_chat_id: int, matrix_room_id: str) -> None:
+    async def try_link_atomic(
+        self,
+        code: str,
+        tg_chat_id: int,
+        matrix_room_id: str,
+    ) -> bool:
+        """Atomically consume pending code and create bridge. Returns False on conflict."""
         now = time.time()
         async with aiosqlite.connect(self.path) as db:
-            await db.execute(
-                "INSERT INTO bridges (tg_chat_id, matrix_room_id, created_at) VALUES (?, ?, ?)",
-                (tg_chat_id, matrix_room_id, now),
-            )
-            await db.commit()
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cur = await db.execute(
+                    "SELECT tg_chat_id FROM pending_links WHERE code = ?", (code,)
+                )
+                if await cur.fetchone() is None:
+                    await db.execute("ROLLBACK")
+                    return False
+                cur2 = await db.execute(
+                    "SELECT 1 FROM bridges WHERE tg_chat_id = ? OR matrix_room_id = ?",
+                    (tg_chat_id, matrix_room_id),
+                )
+                if await cur2.fetchone() is not None:
+                    await db.execute("ROLLBACK")
+                    return False
+                await db.execute("DELETE FROM pending_links WHERE code = ?", (code,))
+                await db.execute(
+                    "INSERT INTO bridges (tg_chat_id, matrix_room_id, created_at) VALUES (?, ?, ?)",
+                    (tg_chat_id, matrix_room_id, now),
+                )
+                await db.commit()
+                return True
+            except sqlite3.IntegrityError:
+                await db.execute("ROLLBACK")
+                return False
 
     async def get_bridge_by_tg(self, tg_chat_id: int) -> Bridge | None:
         async with aiosqlite.connect(self.path) as db:

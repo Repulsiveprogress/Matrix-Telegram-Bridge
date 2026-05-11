@@ -15,6 +15,19 @@ from src.nio_patch import apply_nio_schema_patches
 from src.strings import make_strings
 from src.telegram_handlers import build_telegram_router
 
+_PRIVACY_SENSITIVE_KEYS = frozenset({"body", "text", "caption", "message_text"})
+
+
+class _PrivacyFilter(logging.Filter):
+    """Defence-in-depth: drops log records that accidentally include user message content via dict args."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, dict) and _PRIVACY_SENSITIVE_KEYS.intersection(args):
+            record.msg = "[PRIVACY FILTERED] log record contained sensitive keys"
+            record.args = ()
+        return True
+
 
 def _configure_logging() -> None:
     logging.basicConfig(
@@ -22,6 +35,7 @@ def _configure_logging() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
         stream=sys.stdout,
     )
+    logging.getLogger().addFilter(_PrivacyFilter())
 
 
 async def async_main() -> None:

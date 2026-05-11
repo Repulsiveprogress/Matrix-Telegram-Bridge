@@ -15,6 +15,7 @@ from nio import AsyncClient, DownloadError, MemoryDownloadResponse, UploadError,
 logger = logging.getLogger(__name__)
 
 TG_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+MAX_MATRIX_DOWNLOAD_BYTES = 20 * 1024 * 1024
 
 
 def _bytes_provider(data: bytes) -> Callable[[int, int], io.BytesIO]:
@@ -61,6 +62,9 @@ async def download_mxc_to_bytes(
         logger.error("Matrix download failed (legacy endpoint): %s", result.message)
         return None
     if isinstance(result, MemoryDownloadResponse):
+        if len(result.body) > MAX_MATRIX_DOWNLOAD_BYTES:
+            logger.warning("Matrix media download (legacy) exceeded size limit, skipping")
+            return None
         return result.body, result.content_type or "application/octet-stream", result.filename
     return None
 
@@ -115,7 +119,18 @@ async def _download_mxc_authenticated(
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as resp:
                 if resp.status == 200:
-                    body = await resp.read()
+                    content_length = resp.headers.get("Content-Length")
+                    if content_length and int(content_length) > MAX_MATRIX_DOWNLOAD_BYTES:
+                        logger.warning(
+                            "Matrix media too large to download: Content-Length=%s limit=%s",
+                            content_length,
+                            MAX_MATRIX_DOWNLOAD_BYTES,
+                        )
+                        return None
+                    body = await resp.content.read(MAX_MATRIX_DOWNLOAD_BYTES + 1)
+                    if len(body) > MAX_MATRIX_DOWNLOAD_BYTES:
+                        logger.warning("Matrix media download exceeded size limit, skipping")
+                        return None
                     ctype = resp.headers.get("Content-Type", "application/octet-stream")
                     disposition = resp.headers.get("Content-Disposition")
                     filename = _filename_from_content_disposition(disposition)

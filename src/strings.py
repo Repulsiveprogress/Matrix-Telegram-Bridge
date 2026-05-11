@@ -23,6 +23,7 @@ class Strings:
     rate_limit_code: str
     media_relay_failed: str
     attachment_label: str
+    not_authorized: str
 
 
 class EnglishStrings(Strings):
@@ -68,6 +69,7 @@ class EnglishStrings(Strings):
         self.rate_limit_code = "Too many code requests. Please try again later."
         self.media_relay_failed = "Failed to forward attachment to Matrix (size, format, or network issue)."
         self.attachment_label = "attachment"
+        self.not_authorized = "Not authorized: moderator or admin rights required for this command."
 
     def telegram_welcome(self, matrix_user_id: str, link_code: str) -> str:
         return (
@@ -115,6 +117,7 @@ class RussianStrings(Strings):
         self.rate_limit_code = "Слишком частые запросы кодов связки. Попробуйте позже."
         self.media_relay_failed = "Не удалось переслать вложение в Matrix (размер, формат или сеть)."
         self.attachment_label = "вложение"
+        self.not_authorized = "Нет прав: для этой команды требуются права модератора или администратора."
 
     def telegram_welcome(self, matrix_user_id: str, link_code: str) -> str:
         return (
