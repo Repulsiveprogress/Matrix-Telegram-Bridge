@@ -19,7 +19,7 @@ _PRIVACY_SENSITIVE_KEYS = frozenset({"body", "text", "caption", "message_text"})
 
 
 class _PrivacyFilter(logging.Filter):
-    """Defence-in-depth: drops log records that accidentally include user message content via dict args."""
+    """Defence-in-depth: drops log records that accidentally include user message content."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         args = record.args

@@ -1,0 +1,14 @@
+targets:
+  - src
+
+severity: medium
+confidence: medium
+
+skips:
+  - B101  # assert statements
+  - B311  # random for non-crypto use
+
+exclude_dirs:
+  - .venv
+  - venv
+  - __pycache__

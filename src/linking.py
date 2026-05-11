@@ -9,7 +9,13 @@ _LINK_RE = re.compile(r"^/tg\s+link\s+(\S+)\s*$", re.IGNORECASE | re.UNICODE)
 _UNLINK_RE = re.compile(r"^/tg\s+unlink\s*$", re.IGNORECASE | re.UNICODE)
 _LINK_REQUEST_RE = re.compile(r"^/tg\s+link(?:@\w+)?\s*$", re.IGNORECASE | re.UNICODE)
 
-_ALPHABET = (string.ascii_uppercase + string.digits).replace("O", "").replace("0", "").replace("I", "").replace("1", "")
+_ALPHABET = (
+    (string.ascii_uppercase + string.digits)
+    .replace("O", "")
+    .replace("0", "")
+    .replace("I", "")
+    .replace("1", "")
+)
 
 
 def generate_link_code() -> str:

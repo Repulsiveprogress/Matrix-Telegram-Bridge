@@ -70,10 +70,14 @@ def build_telegram_router(bridge: BridgeService, bot: Bot) -> Router:
         if bridge.is_unlink_command(text):
             await bridge.unlink_from_telegram(message.chat.id, message.from_user.id)
             return
-        label = message.from_user.username or message.from_user.full_name or str(message.from_user.id)
+        label = (
+            message.from_user.username or message.from_user.full_name or str(message.from_user.id)
+        )
         await bridge.relay_telegram_to_matrix(message.chat.id, message.from_user.id, label, text)
 
-    @router.message(F.chat.type.in_({"group", "supergroup"}), F.content_type.in_(_RELAY_MEDIA_TYPES))
+    @router.message(
+        F.chat.type.in_({"group", "supergroup"}), F.content_type.in_(_RELAY_MEDIA_TYPES)
+    )
     async def on_group_media(message: Message) -> None:
         if message.from_user is None:
             return

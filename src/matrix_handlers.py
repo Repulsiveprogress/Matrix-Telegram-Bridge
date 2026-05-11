@@ -59,7 +59,9 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
     async def on_invite(room, event: InviteMemberEvent) -> None:
         me = _own_mxid(client)
         if event.state_key != me:
-            logger.debug("Invite m.room.member for another user: state_key=%s us=%s", event.state_key, me)
+            logger.debug(
+                "Invite m.room.member for another user: state_key=%s us=%s", event.state_key, me
+            )
             return
         room_id = room.room_id
         if not await bridge.room_server_allowed(room_id):
@@ -80,7 +82,6 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
         await bridge.on_bot_joined_matrix_room(room.room_id)
 
     async def on_text(room, event: RoomMessageText) -> None:
-        room_id = room.room_id
         body = event.body or ""
         if not bridge.is_fresh_matrix_event(getattr(event, "server_timestamp", None)):
             return

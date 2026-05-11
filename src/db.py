@@ -99,7 +99,8 @@ class Database:
         now = time.time()
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
-                "INSERT INTO pending_links (code, tg_chat_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+                "INSERT INTO pending_links (code, tg_chat_id, created_at, expires_at)"
+                " VALUES (?, ?, ?, ?)",
                 (code, tg_chat_id, now, expires_at),
             )
             await db.commit()
@@ -181,7 +182,8 @@ class Database:
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
-                "SELECT tg_chat_id, matrix_room_id, created_at FROM bridges WHERE matrix_room_id = ?",
+                "SELECT tg_chat_id, matrix_room_id, created_at FROM bridges"
+                " WHERE matrix_room_id = ?",
                 (matrix_room_id,),
             )
             row = await cur.fetchone()

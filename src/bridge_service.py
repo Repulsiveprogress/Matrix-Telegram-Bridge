@@ -146,7 +146,8 @@ class BridgeService:
             return self._is_allowed_hostname(self._hostname_from_server_name(creator_server))
 
         logger.warning(
-            "Cannot determine room server for MATRIX_ALLOWED_SERVER check, denying: room_id=%s creator=%s",
+            "Cannot determine room server for MATRIX_ALLOWED_SERVER check, "
+            "denying: room_id=%s creator=%s",
             room_id,
             creator,
         )
@@ -319,13 +320,13 @@ class BridgeService:
         label = _matrix_sender_display_name(room, sender_id)
         text = _format_relay_telegram_html(label, body)
         try:
-            await self.tg_bot.send_message(
-                bridge.tg_chat_id, text, parse_mode=ParseMode.HTML
-            )
+            await self.tg_bot.send_message(bridge.tg_chat_id, text, parse_mode=ParseMode.HTML)
         except Exception as exc:
             logger.error("relay_matrix_to_telegram failed: %s", exc)
 
-    async def relay_telegram_to_matrix(self, tg_chat_id: int, from_user_id: int, label: str, body: str) -> None:
+    async def relay_telegram_to_matrix(
+        self, tg_chat_id: int, from_user_id: int, label: str, body: str
+    ) -> None:
         if self.is_unlink_command(body):
             await self.unlink_from_telegram(tg_chat_id, from_user_id)
             return
@@ -357,7 +358,9 @@ class BridgeService:
         bridge = await self.db.get_bridge_by_tg(message.chat.id)
         if not bridge:
             return
-        label = message.from_user.username or message.from_user.full_name or str(message.from_user.id)
+        label = (
+            message.from_user.username or message.from_user.full_name or str(message.from_user.id)
+        )
         ok = await relay_telegram_message_media(
             self.tg_bot, self.matrix, bridge.matrix_room_id, label, message
         )

@@ -39,7 +39,9 @@ class EnglishStrings(Strings):
             "and send the following command there:\n\n"
             "/tg link {link_code}"
         )
-        self.link_success_matrix = "Telegram chat successfully linked to this room. Messages will be relayed."
+        self.link_success_matrix = (
+            "Telegram chat successfully linked to this room. Messages will be relayed."
+        )
         self.link_success_telegram = "Matrix room successfully linked. Messages will be relayed."
         self.unlink_success_matrix = "Bridge with Telegram removed."
         self.unlink_success_telegram = "Bridge with Matrix removed."
@@ -67,7 +69,9 @@ class EnglishStrings(Strings):
         )
         self.rate_limit_link = "Too many link attempts. Please wait a few minutes."
         self.rate_limit_code = "Too many code requests. Please try again later."
-        self.media_relay_failed = "Failed to forward attachment to Matrix (size, format, or network issue)."
+        self.media_relay_failed = (
+            "Failed to forward attachment to Matrix (size, format, or network issue)."
+        )
         self.attachment_label = "attachment"
         self.not_authorized = "Not authorized: moderator or admin rights required for this command."
 
@@ -87,7 +91,9 @@ class RussianStrings(Strings):
             "2. Сделайте бота администратором (или дайте права на чтение сообщений/медиа).\n"
             "3. Вы получите команду вида /tg link [КОД] — введите её здесь."
         )
-        self.link_success_matrix = "Чат Telegram успешно связан с этой комнатой. Сообщения будут пересылаться."
+        self.link_success_matrix = (
+            "Чат Telegram успешно связан с этой комнатой. Сообщения будут пересылаться."
+        )
         self.link_success_telegram = "Комната Matrix успешно связана. Сообщения будут пересылаться."
         self.unlink_success_matrix = "Связка с Telegram разорвана."
         self.unlink_success_telegram = "Связка с Matrix разорвана."
@@ -115,9 +121,13 @@ class RussianStrings(Strings):
         )
         self.rate_limit_link = "Слишком много попыток связки. Подождите несколько минут."
         self.rate_limit_code = "Слишком частые запросы кодов связки. Попробуйте позже."
-        self.media_relay_failed = "Не удалось переслать вложение в Matrix (размер, формат или сеть)."
+        self.media_relay_failed = (
+            "Не удалось переслать вложение в Matrix (размер, формат или сеть)."
+        )
         self.attachment_label = "вложение"
-        self.not_authorized = "Нет прав: для этой команды требуются права модератора или администратора."
+        self.not_authorized = (
+            "Нет прав: для этой команды требуются права модератора или администратора."
+        )
 
     def telegram_welcome(self, matrix_user_id: str, link_code: str) -> str:
         return (

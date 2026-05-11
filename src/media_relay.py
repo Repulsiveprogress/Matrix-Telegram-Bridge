@@ -4,8 +4,8 @@ import io
 import logging
 import mimetypes
 import os
+from collections.abc import Callable
 from urllib.parse import quote
-from typing import Callable
 
 import aiohttp
 from aiogram import Bot
@@ -32,7 +32,9 @@ async def upload_bytes_to_matrix(
     filename: str | None,
 ) -> str | None:
     if len(data) > TG_MAX_DOWNLOAD_BYTES:
-        logger.warning("Skipping Matrix upload: file exceeds %s MB", TG_MAX_DOWNLOAD_BYTES // (1024 * 1024))
+        logger.warning(
+            "Skipping Matrix upload: file exceeds %s MB", TG_MAX_DOWNLOAD_BYTES // (1024 * 1024)
+        )
         return None
     resp, _ = await client.upload(
         _bytes_provider(data),
@@ -72,7 +74,7 @@ async def download_mxc_to_bytes(
 def _parse_mxc_uri(mxc_url: str) -> tuple[str, str] | None:
     if not mxc_url.startswith("mxc://"):
         return None
-    rest = mxc_url[len("mxc://"):]
+    rest = mxc_url[len("mxc://") :]
     if "/" not in rest:
         return None
     server_name, media_id = rest.split("/", 1)
@@ -116,39 +118,41 @@ async def _download_mxc_authenticated(
     headers = {"Authorization": f"Bearer {client.access_token}"}
     timeout = aiohttp.ClientTimeout(total=60)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status == 200:
-                    content_length = resp.headers.get("Content-Length")
-                    if content_length and int(content_length) > MAX_MATRIX_DOWNLOAD_BYTES:
-                        logger.warning(
-                            "Matrix media too large to download: Content-Length=%s limit=%s",
-                            content_length,
-                            MAX_MATRIX_DOWNLOAD_BYTES,
-                        )
-                        return None
-                    body = await resp.content.read(MAX_MATRIX_DOWNLOAD_BYTES + 1)
-                    if len(body) > MAX_MATRIX_DOWNLOAD_BYTES:
-                        logger.warning("Matrix media download exceeded size limit, skipping")
-                        return None
-                    ctype = resp.headers.get("Content-Type", "application/octet-stream")
-                    disposition = resp.headers.get("Content-Disposition")
-                    filename = _filename_from_content_disposition(disposition)
-                    return body, ctype, filename
-                if resp.status != 404:
-                    text = await resp.text()
+        async with (
+            aiohttp.ClientSession(timeout=timeout) as session,
+            session.get(url, headers=headers) as resp,
+        ):
+            if resp.status == 200:
+                content_length = resp.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_MATRIX_DOWNLOAD_BYTES:
                     logger.warning(
-                        "Matrix authenticated media download failed status=%s url=%s body=%s",
-                        resp.status,
-                        url,
-                        text[:300],
+                        "Matrix media too large to download: Content-Length=%s limit=%s",
+                        content_length,
+                        MAX_MATRIX_DOWNLOAD_BYTES,
                     )
                     return None
-                logger.info(
-                    "Matrix authenticated media endpoint returned 404, falling back to legacy: %s",
-                    mxc_url,
+                body = await resp.content.read(MAX_MATRIX_DOWNLOAD_BYTES + 1)
+                if len(body) > MAX_MATRIX_DOWNLOAD_BYTES:
+                    logger.warning("Matrix media download exceeded size limit, skipping")
+                    return None
+                ctype = resp.headers.get("Content-Type", "application/octet-stream")
+                disposition = resp.headers.get("Content-Disposition")
+                filename = _filename_from_content_disposition(disposition)
+                return body, ctype, filename
+            if resp.status != 404:
+                text = await resp.text()
+                logger.warning(
+                    "Matrix authenticated media download failed status=%s url=%s body=%s",
+                    resp.status,
+                    url,
+                    text[:300],
                 )
                 return None
+            logger.info(
+                "Matrix authenticated media endpoint returned 404, falling back to legacy: %s",
+                mxc_url,
+            )
+            return None
     except Exception:
         logger.exception("Matrix authenticated media download exception for %s", mxc_url)
         return None
@@ -157,7 +161,7 @@ async def _download_mxc_authenticated(
 def _truncate_caption(s: str, max_len: int = 1024) -> str:
     if len(s) <= max_len:
         return s
-    return s[:max_len - 1] + "…"
+    return s[: max_len - 1] + "…"
 
 
 async def send_matrix_media_to_telegram(
@@ -191,11 +195,16 @@ async def send_matrix_media_to_telegram(
         )
         return
     if matrix_msgtype == "m.audio":
-        info_voice = matrix_voice or mime in (
-            "audio/ogg",
-            "audio/opus",
-            "application/ogg",
-        ) or fn0.lower().endswith(".ogg")
+        info_voice = (
+            matrix_voice
+            or mime
+            in (
+                "audio/ogg",
+                "audio/opus",
+                "application/ogg",
+            )
+            or fn0.lower().endswith(".ogg")
+        )
         bio = BufferedInputFile(data, filename=fn0)
         if info_voice:
             await bot.send_voice(chat_id, bio, caption=cap, parse_mode="HTML")
@@ -243,7 +252,9 @@ async def telegram_video_like_to_matrix(
     info: dict = {"mimetype": mime, "size": len(data)}
     if duration is not None:
         info["duration"] = int(duration)
-    await client.room_send(room_id, "m.room.message", {"msgtype": msgtype, "body": body, "url": uri, "info": info})
+    await client.room_send(
+        room_id, "m.room.message", {"msgtype": msgtype, "body": body, "url": uri, "info": info}
+    )
     return True
 
 
