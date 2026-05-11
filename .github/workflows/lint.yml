@@ -49,25 +49,25 @@ jobs:
         run: |
           if [ -f bandit-report.json ]; then
             python - <<'EOF'
-import json, sys
-with open("bandit-report.json") as f:
-    r = json.load(f)
-issues = r.get("results", [])
-if not issues:
-    print("No security issues found.")
-    sys.exit(0)
-for i in issues:
-    sev = i["issue_severity"]
-    conf = i["issue_confidence"]
-    text = i["issue_text"]
-    loc = f"{i['filename']}:{i['line_number']}"
-    print(f"[{sev}/{conf}] {loc}: {text}")
-# Fail on HIGH severity
-high = [i for i in issues if i["issue_severity"] == "HIGH"]
-if high:
-    print(f"\n{len(high)} HIGH severity issue(s) found — failing.")
-    sys.exit(1)
-EOF
+          import json, sys
+          with open("bandit-report.json") as f:
+              r = json.load(f)
+          issues = r.get("results", [])
+          if not issues:
+              print("No security issues found.")
+              sys.exit(0)
+          for i in issues:
+              sev = i["issue_severity"]
+              conf = i["issue_confidence"]
+              text = i["issue_text"]
+              loc = f"{i['filename']}:{i['line_number']}"
+              print(f"[{sev}/{conf}] {loc}: {text}")
+          # Fail on HIGH severity
+          high = [i for i in issues if i["issue_severity"] == "HIGH"]
+          if high:
+              print(f"\n{len(high)} HIGH severity issue(s) found — failing.")
+              sys.exit(1)
+          EOF
           fi
 
       - name: Upload bandit report
