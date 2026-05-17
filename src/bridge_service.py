@@ -19,7 +19,13 @@ from src.linking import (
     is_tg_unlink_command,
     parse_tg_link_command,
 )
-from src.media_relay import relay_matrix_media_event_to_telegram, relay_telegram_message_media
+from src.media_relay import (
+    download_mxc_to_bytes,
+    relay_matrix_media_event_to_telegram,
+    relay_telegram_message_media,
+    send_matrix_sticker_to_telegram,
+    guess_ext,
+)
 from src.rate_limit import SlidingWindowLimiter
 from src.strings import Strings
 
@@ -385,3 +391,32 @@ class BridgeService:
         await relay_matrix_media_event_to_telegram(
             self.tg_bot, self.matrix, bridge.tg_chat_id, caption, event, matrix_msgtype
         )
+
+    async def relay_matrix_sticker_to_telegram(self, room, event) -> None:
+        room_id = room.room_id
+        if not self.is_fresh_matrix_event(getattr(event, "server_timestamp", None)):
+            return
+        bridge = await self.db.get_bridge_by_matrix(room_id)
+        if not bridge:
+            return
+        if event.sender == self.matrix.user_id:
+            return
+        content = event.source.get("content", {})
+        mxc_url = content.get("url", "")
+        if not mxc_url or not str(mxc_url).startswith("mxc://"):
+            logger.warning("Matrix sticker has no valid mxc url")
+            return
+        dl = await download_mxc_to_bytes(self.matrix, mxc_url)
+        if not dl:
+            return
+        data, mime, fname = dl
+        body = content.get("body", "") or "sticker"
+        filename = fname or f"sticker{guess_ext(mime, '.webp')}"
+        label = _matrix_sender_display_name(room, event.sender)
+        caption = _format_relay_telegram_html(label, body)
+        try:
+            await send_matrix_sticker_to_telegram(
+                self.tg_bot, bridge.tg_chat_id, caption, data, filename, mime
+            )
+        except Exception:
+            logger.exception("Failed to send Matrix sticker to Telegram")

@@ -310,7 +310,7 @@ async def telegram_file_to_matrix(
     return True
 
 
-def _guess_ext(mime: str, fallback: str) -> str:
+def guess_ext(mime: str, fallback: str) -> str:
     ext = mimetypes.guess_extension(mime or "") or ""
     if ext in (".htm", ".html", ".php"):
         ext = ""
@@ -340,7 +340,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = "image/jpeg"
-        fn = f"photo{_guess_ext(mime, '.jpg')}"
+        fn = f"photo{guess_ext(mime, '.jpg')}"
         return await telegram_photo_to_matrix(
             matrix, room_id, _compose_media_body(label, "photo", caption), raw, mime, fn
         )
@@ -352,7 +352,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = v.mime_type or "video/mp4"
-        fn = v.file_name or f"video{_guess_ext(mime, '.mp4')}"
+        fn = v.file_name or f"video{guess_ext(mime, '.mp4')}"
         return await telegram_video_like_to_matrix(
             matrix,
             room_id,
@@ -371,7 +371,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = a.mime_type or "video/mp4"
-        fn = a.file_name or f"animation{_guess_ext(mime, '.mp4')}"
+        fn = a.file_name or f"animation{guess_ext(mime, '.mp4')}"
         return await telegram_video_like_to_matrix(
             matrix,
             room_id,
@@ -390,7 +390,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = "video/mp4"
-        fn = f"videonote{_guess_ext(mime, '.mp4')}"
+        fn = f"videonote{guess_ext(mime, '.mp4')}"
         return await telegram_video_like_to_matrix(
             matrix,
             room_id,
@@ -409,7 +409,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = a.mime_type or "audio/mpeg"
-        fn = a.file_name or f"audio{_guess_ext(mime, '.mp3')}"
+        fn = a.file_name or f"audio{guess_ext(mime, '.mp3')}"
         return await telegram_audio_to_matrix(
             matrix,
             room_id,
@@ -428,7 +428,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = v.mime_type or "audio/ogg"
-        fn = f"voice{_guess_ext(mime, '.ogg')}"
+        fn = f"voice{guess_ext(mime, '.ogg')}"
         return await telegram_audio_to_matrix(
             matrix,
             room_id,
@@ -447,7 +447,7 @@ async def relay_telegram_message_media(
             return False
         raw = buf.read()
         mime = d.mime_type or "application/octet-stream"
-        fn = d.file_name or f"file{_guess_ext(mime, '')}" or "file.bin"
+        fn = d.file_name or f"file{guess_ext(mime, '')}" or "file.bin"
         return await telegram_file_to_matrix(
             matrix, room_id, _compose_media_body(label, "file", caption), raw, mime, fn
         )
@@ -489,6 +489,28 @@ async def relay_telegram_message_media(
     return False
 
 
+async def send_matrix_sticker_to_telegram(
+    bot: Bot,
+    chat_id: int,
+    caption_html: str,
+    data: bytes,
+    filename: str,
+    mime: str,
+) -> None:
+    fn = filename or "sticker.webp"
+    # Telegram's send_sticker accepts WebP/TGS/WebM; anything else falls back to document.
+    if mime == "image/webp" or fn.lower().endswith(".webp"):
+        try:
+            await bot.send_sticker(chat_id, BufferedInputFile(data, filename=fn))
+            return
+        except Exception:
+            logger.warning("send_sticker failed, falling back to send_document")
+    cap = _truncate_caption(caption_html)
+    await bot.send_document(
+        chat_id, BufferedInputFile(data, filename=fn), caption=cap, parse_mode="HTML"
+    )
+
+
 async def relay_matrix_media_event_to_telegram(
     bot: Bot,
     matrix: AsyncClient,
@@ -508,7 +530,7 @@ async def relay_matrix_media_event_to_telegram(
     body = getattr(event, "body", "") or ""
     filename = fname or os.path.basename(body) or "file"
     if "." not in filename and mime:
-        filename += _guess_ext(mime, ".bin")
+        filename += guess_ext(mime, ".bin")
     info = event.source.get("content", {}).get("info") or {}
     matrix_voice = bool(info.get("org.matrix.msc3245.voice"))
     try:

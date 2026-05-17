@@ -14,6 +14,7 @@ from nio import (
     RoomMessageText,
     RoomMessageVideo,
     SyncResponse,
+    UnknownEvent,
 )
 
 from src.bridge_service import BridgeService
@@ -108,6 +109,11 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
             return
         await bridge.relay_matrix_media_to_telegram(room, event, mt)
 
+    async def on_unknown_event(room, event: UnknownEvent) -> None:
+        if getattr(event, "type", None) != "m.sticker":
+            return
+        await bridge.relay_matrix_sticker_to_telegram(room, event)
+
     client.add_response_callback(on_first_sync, SyncResponse)
     client.add_event_callback(on_invite, InviteMemberEvent)
     client.add_event_callback(on_room_member, RoomMemberEvent)
@@ -116,3 +122,4 @@ def register_matrix_callbacks(client: AsyncClient, bridge: BridgeService) -> Non
         on_room_media,
         (RoomMessageImage, RoomMessageVideo, RoomMessageAudio, RoomMessageFile),
     )
+    client.add_event_callback(on_unknown_event, UnknownEvent)
