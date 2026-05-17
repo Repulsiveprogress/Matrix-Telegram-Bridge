@@ -21,10 +21,10 @@ from src.linking import (
 )
 from src.media_relay import (
     download_mxc_to_bytes,
+    guess_ext,
     relay_matrix_media_event_to_telegram,
     relay_telegram_message_media,
     send_matrix_sticker_to_telegram,
-    guess_ext,
 )
 from src.rate_limit import SlidingWindowLimiter
 from src.strings import Strings
